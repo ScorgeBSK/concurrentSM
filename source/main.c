@@ -25,6 +25,7 @@ unsigned char threeLEDs = 0x00;
 unsigned char blinkingLED = 0x00;
 unsigned char speakerOutput = 0x00;
 unsigned char combinedLED = 0x00;
+unsigned long currentFreq = 2;
 
 enum TL_States {threeLED_start, seq1, seq2, seq3} TL_state;
 int threeLEDTick(){
@@ -174,6 +175,69 @@ int speakerTick(){
 	return S_state;
 }
 
+enum freq_States {freq_start, freq_init, freq_wait, freq_increment, inc_release, freq_decrement, dec_release} f_state;
+void freqTick(){
+	unsigned char button = ~PINA & 0x03;
+	unsigned long tmpFreq = 0;
+
+	switch(f_state){
+		case freq_start:
+			f_state = freq_init;
+			break;
+		case freq_init:
+			f_state = freq_wait;
+			break;
+		case freq_wait:
+			if(button == 0x01){
+				f_state = freq_decrement;
+			}
+			else if(button == 0x02){
+				f_state = freq_increment;
+			}
+			else
+				f_state = freq_init;
+			break;
+		case freq_increment:
+			f_state = inc_release;
+			break;
+		case inc_release:
+			f_state = button ? inc_release : freq_wait;
+			break;
+		case freq_decrement:
+			f_state = dec_release;
+			break;
+		case dec_release:
+			f_state = button ? dec_release : freq_wait;
+			break;
+		default:
+			f_state = freq_start;
+			break;
+	}
+
+	switch(f_state){
+		case freq_start:
+			break;
+		case freq_init:
+			tmpFreq = 2;
+			break;
+		case freq_wait:
+			break;
+		case freq_increment:
+			--tmpFreq;
+			break;
+		case freq_decrement:
+			++tmpFreq;
+			break;
+		case inc_release:
+			break;
+		case dec_release:
+			break;
+		default:
+			break;
+	}
+
+	currentFreq = tmpFreq;
+}	
 int main(void) {
 
     /* Insert DDR and PORT initializations */
@@ -195,17 +259,17 @@ int main(void) {
 	tasks[1].TickFct = &blinkLEDTick;
 
 	tasks[2].state = speaker_start;
-	tasks[2].period = 2;
-	tasks[2].elapsedTime = tasks[2].period;
+	tasks[2].period = currentFreq;
+        tasks[2].elapsedTime = tasks[2].period;
 	tasks[2].TickFct = &speakerTick;
 
-	unsigned long PERIOD = 2;
+	unsigned long PERIOD = 1;
 	TimerSet(PERIOD);
 	TimerOn();
 	
 	unsigned char i;
 	while(1){
-		
+	
 		for(i = 0; i < SIZE; ++i){
 			if(tasks[i].elapsedTime >= tasks[i].period){
 				tasks[i].state = tasks[i].TickFct(tasks[i].state);
@@ -213,6 +277,7 @@ int main(void) {
 			}
 			tasks[i].elapsedTime += PERIOD;
 		}
+		freqTick();
 		CombineLEDTick();
 		PORTB = combinedLED;
 		while(!TimerFlag) {};
